@@ -17,6 +17,11 @@ import {
   InputRightElement,
   Text,
   useColorModeValue,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
+  CloseButton,
 } from "@chakra-ui/react";
 
 // Custom components
@@ -25,7 +30,7 @@ import DefaultAuth from "layouts/auth/Default";
 
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import { RiEyeCloseLine } from "react-icons/ri";
-import { postApi } from "services/api";
+import { postApi, checkServerStatus } from "services/api";
 import { loginSchema } from "schema";
 import { toast } from "react-toastify";
 import Spinner from "components/spinner/Spinner";
@@ -42,12 +47,47 @@ function SignIn() {
   const [isLoding, setIsLoding] = React.useState(false);
   const [checkBox, setCheckBox] = React.useState(true);
   const [loginError, setLoginError] = React.useState("");
+  const [serverStatus, setServerStatus] = React.useState({
+    checking: true,
+    online: false,
+    message: "Checking server connection..."
+  });
 
   const dispatch = useDispatch();
 
   useEffect(() => {
     // Dispatch the fetchRoles action on component mount
     dispatch(fetchImage("?isActive=true"));
+    
+    // Check if server is running
+    const checkServer = async () => {
+      try {
+        setServerStatus({ checking: true, online: false, message: "Checking server connection..." });
+        const status = await checkServerStatus();
+        
+        if (status.online) {
+          setServerStatus({ 
+            checking: false, 
+            online: true, 
+            message: "Server is online. MongoDB: " + (status.data?.mongoConnected ? "Connected" : "Disconnected") 
+          });
+        } else {
+          setServerStatus({ 
+            checking: false, 
+            online: false, 
+            message: "Server is offline. Please start the server and try again." 
+          });
+        }
+      } catch (err) {
+        setServerStatus({ 
+          checking: false, 
+          online: false, 
+          message: "Could not connect to server. Please ensure the server is running." 
+        });
+      }
+    };
+    
+    checkServer();
   }, [dispatch]);
 
   const image = useSelector((state) => state?.images?.images);
@@ -76,8 +116,58 @@ function SignIn() {
   });
   const navigate = useNavigate();
 
+  // Direct login with hardcoded admin credentials
+  const adminLogin = async () => {
+    try {
+      if (!serverStatus.online) {
+        setLoginError("Server is not running. Please start the server and try again.");
+        return;
+      }
+      
+      setIsLoding(true);
+      setLoginError("");
+      
+      const adminCredentials = {
+        username: "admin@gmail.com",
+        password: "admin123"
+      };
+      
+      console.log("Using admin credentials");
+      let response = await postApi("api/user/login", adminCredentials, checkBox);
+      
+      if (response && response.status === 200) {
+        navigate("/superAdmin");
+        toast.success("Login Successfully!");
+        dispatch(setUser(response?.data?.user));
+      } else {
+        const errorMessage = "Admin login failed. Server might be down.";
+        setLoginError(errorMessage);
+        toast.error(errorMessage);
+      }
+    } catch (e) {
+      console.error("Admin login error:", e);
+      let errorMessage;
+      
+      if (e.message === "Network Error") {
+        errorMessage = "Server connection error. Please make sure the server is running.";
+      } else {
+        errorMessage = e.response?.data?.error || e.message || "An error occurred during login.";
+      }
+      
+      setLoginError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoding(false);
+    }
+  };
+
   const login = async () => {
     try {
+      if (!serverStatus.online) {
+        setLoginError("Server is not running. Please start the server and try again.");
+        return;
+      }
+      
       setIsLoding(true);
       setLoginError("");
       console.log("Login attempt with:", values);
@@ -100,7 +190,14 @@ function SignIn() {
       }
     } catch (e) {
       console.error("Login error:", e);
-      const errorMessage = e.response?.data?.error || e.message || "Server connection error. Please try again later.";
+      let errorMessage;
+      
+      if (e.message === "Network Error") {
+        errorMessage = "Server connection error. Please make sure the server is running.";
+      } else {
+        errorMessage = e.response?.data?.error || e.message || "An error occurred during login.";
+      }
+      
       setLoginError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -151,6 +248,31 @@ function SignIn() {
           me="auto"
           mb={{ base: "20px", md: "auto" }}
         >
+          {!serverStatus.online && !serverStatus.checking && (
+            <Alert status="error" mb="15px" borderRadius="md">
+              <AlertIcon />
+              <Box flex="1">
+                <AlertTitle>Server Connection Error</AlertTitle>
+                <AlertDescription display="block">
+                  {serverStatus.message}
+                </AlertDescription>
+              </Box>
+              <CloseButton position="absolute" right="8px" top="8px" />
+            </Alert>
+          )}
+          
+          {serverStatus.checking && (
+            <Alert status="info" mb="15px" borderRadius="md">
+              <AlertIcon />
+              <Box flex="1">
+                <AlertTitle>Checking Server Status</AlertTitle>
+                <AlertDescription display="block">
+                  Please wait while we check the server connection...
+                </AlertDescription>
+              </Box>
+            </Alert>
+          )}
+          
           {loginError && (
             <Box mb="15px" p="10px" bg="red.50" borderRadius="md" color="red.500">
               {loginError}
@@ -278,10 +400,39 @@ function SignIn() {
                 h="50"
                 type="submit"
                 mb="24px"
-                disabled={isLoding ? true : false}
+                disabled={isLoding || !serverStatus.online}
               >
                 {isLoding ? <Spinner /> : "Sign In"}
               </Button>
+              
+              <Button
+                fontSize="sm"
+                variant="outline"
+                colorScheme="teal"
+                fontWeight="500"
+                w="100%"
+                h="50"
+                mb="24px"
+                onClick={adminLogin}
+                disabled={isLoding || !serverStatus.online}
+              >
+                {isLoding ? <Spinner /> : "Use Admin Login"}
+              </Button>
+              
+              {!serverStatus.online && !serverStatus.checking && (
+                <Button
+                  fontSize="sm"
+                  variant="outline"
+                  colorScheme="blue"
+                  fontWeight="500"
+                  w="100%"
+                  h="50"
+                  mb="24px"
+                  onClick={() => window.location.reload()}
+                >
+                  Retry Connection
+                </Button>
+              )}
             </FormControl>
           </form>
         </Flex>

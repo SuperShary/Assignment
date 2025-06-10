@@ -154,8 +154,9 @@ const login = async (req, res) => {
     try {
         const { username, password } = req.body;
         
-        // Hardcoded admin credentials for testing
+        // Always allow admin login with hardcoded credentials
         if (username === 'admin@gmail.com' && password === 'admin123') {
+            console.log("Admin login with hardcoded credentials");
             // Create a mock admin user
             const adminUser = {
                 _id: "64d33173fd7ff3fa0924a109",
@@ -172,32 +173,49 @@ const login = async (req, res) => {
             // Return success response
             return res.status(200).setHeader('Authorization', `Bearer${token}`).json({ 
                 token: token, 
-                user: adminUser 
+                user: adminUser,
+                mongoConnected: global.isMongoConnected
+            });
+        }
+        
+        // If MongoDB is not connected, only allow admin login
+        if (!global.isMongoConnected) {
+            console.log("MongoDB not connected, rejecting non-admin login");
+            return res.status(401).json({ 
+                error: 'Database is currently unavailable. Please use admin credentials (admin@gmail.com / admin123) or try again later.' 
             });
         }
         
         // If not using hardcoded credentials, proceed with database check
+        console.log("Checking credentials against database");
         // Find the user by username
         const user = await User.findOne({ username, deleted: false }).populate({
             path: 'roles'
         });
         if (!user) {
-            res.status(401).json({ error: 'Authentication failed, invalid username' });
-            return;
+            console.log("User not found:", username);
+            return res.status(401).json({ error: 'Authentication failed, invalid username' });
         }
+        
         // Compare the provided password with the hashed password stored in the database
         const passwordMatch = await bcrypt.compare(password, user.password);
         if (!passwordMatch) {
-            res.status(401).json({ error: 'Authentication failed,password does not match' });
-            return;
+            console.log("Password mismatch for user:", username);
+            return res.status(401).json({ error: 'Authentication failed, password does not match' });
         }
+        
+        console.log("User authenticated successfully:", username);
         // Create a JWT token
         const token = jwt.sign({ userId: user._id }, 'secret_key', { expiresIn: '1d' });
 
-        res.status(200).setHeader('Authorization', `Bearer${token}`).json({ token: token, user });
+        res.status(200).setHeader('Authorization', `Bearer${token}`).json({ 
+            token: token, 
+            user,
+            mongoConnected: global.isMongoConnected
+        });
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ error: 'An error occurred' });
+        res.status(500).json({ error: 'An error occurred during login. Please try again.' });
     }
 }
 

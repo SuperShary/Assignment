@@ -44,71 +44,80 @@ const initializedSchemas = async () => {
 }
 
 const connectDB = async (DATABASE_URL, DATABASE) => {
-    try {
-        const DB_OPTIONS = {
-            dbName: DATABASE,
-            serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-            connectTimeoutMS: 10000, // Give up initial connection after 10s
-        }
+    return new Promise(async (resolve, reject) => {
+        try {
+            const DB_OPTIONS = {
+                dbName: DATABASE,
+                serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+                connectTimeoutMS: 10000, // Give up initial connection after 10s
+            }
 
-        mongoose.set("strictQuery", false);
-        
-        console.log("Attempting to connect to MongoDB...");
-        await mongoose.connect(DATABASE_URL, DB_OPTIONS);
+            mongoose.set("strictQuery", false);
+            
+            console.log("Attempting to connect to MongoDB...");
+            await mongoose.connect(DATABASE_URL, DB_OPTIONS);
 
-        await initializedSchemas();
+            // Set up default admin user even if schema initialization fails
+            try {
+                await initializedSchemas();
 
-        /* this was temporary  */
-        const mockRes = {
-            status: (code) => {
-                return {
+                /* this was temporary  */
+                const mockRes = {
+                    status: (code) => {
+                        return {
+                            json: (data) => { }
+                        };
+                    },
                     json: (data) => { }
                 };
-            },
-            json: (data) => { }
-        };
 
-        // Create default modules
-        try {
-            await createNewModule({ body: { moduleName: 'Leads', fields: leadFields, headings: [], isDefault: true } }, mockRes);
-            await createNewModule({ body: { moduleName: 'Contacts', fields: contactFields, headings: [], isDefault: true } }, mockRes);
-            await createNewModule({ body: { moduleName: 'Properties', fields: propertiesFields, headings: [], isDefault: true } }, mockRes);
-        } catch (error) {
-            console.log("Error creating default modules:", error.message);
-        }
-        
-        try {
-            await initializedSchemas();
+                // Create default modules
+                try {
+                    await createNewModule({ body: { moduleName: 'Leads', fields: leadFields, headings: [], isDefault: true } }, mockRes);
+                    await createNewModule({ body: { moduleName: 'Contacts', fields: contactFields, headings: [], isDefault: true } }, mockRes);
+                    await createNewModule({ body: { moduleName: 'Properties', fields: propertiesFields, headings: [], isDefault: true } }, mockRes);
+                } catch (error) {
+                    console.log("Error creating default modules:", error.message);
+                }
+                
+                try {
+                    await initializedSchemas();
 
-            let adminExisting = await User.find({ role: 'superAdmin' });
-            if (adminExisting.length <= 0) {
-                const phoneNumber = 7874263694
-                const firstName = 'Prolink'
-                const lastName = 'Infotech'
-                const username = 'admin@gmail.com'
-                const password = 'admin123'
-                // Hash the password
-                const hashedPassword = await bcrypt.hash(password, 10);
-                // Create a new user
-                const user = new User({ _id: new mongoose.Types.ObjectId('64d33173fd7ff3fa0924a109'), username, password: hashedPassword, firstName, lastName, phoneNumber, role: 'superAdmin' });
-                // Save the user to the database
-                await user.save();
-                console.log("Admin created successfully..");
-            } else if (adminExisting[0].deleted === true) {
-                await User.findByIdAndUpdate(adminExisting[0]._id, { deleted: false });
-                console.log("Admin Update successfully..");
-            } else if (adminExisting[0].username !== "admin@gmail.com") {
-                await User.findByIdAndUpdate(adminExisting[0]._id, { username: 'admin@gmail.com' });
-                console.log("Admin Update successfully..");
+                    let adminExisting = await User.find({ role: 'superAdmin' });
+                    if (adminExisting.length <= 0) {
+                        const phoneNumber = 7874263694
+                        const firstName = 'Prolink'
+                        const lastName = 'Infotech'
+                        const username = 'admin@gmail.com'
+                        const password = 'admin123'
+                        // Hash the password
+                        const hashedPassword = await bcrypt.hash(password, 10);
+                        // Create a new user
+                        const user = new User({ _id: new mongoose.Types.ObjectId('64d33173fd7ff3fa0924a109'), username, password: hashedPassword, firstName, lastName, phoneNumber, role: 'superAdmin' });
+                        // Save the user to the database
+                        await user.save();
+                        console.log("Admin created successfully..");
+                    } else if (adminExisting[0].deleted === true) {
+                        await User.findByIdAndUpdate(adminExisting[0]._id, { deleted: false });
+                        console.log("Admin Update successfully..");
+                    } else if (adminExisting[0].username !== "admin@gmail.com") {
+                        await User.findByIdAndUpdate(adminExisting[0]._id, { username: 'admin@gmail.com' });
+                        console.log("Admin Update successfully..");
+                    }
+                } catch (error) {
+                    console.log("Error checking/creating admin user:", error.message);
+                }
+            } catch (error) {
+                console.log("Error during schema setup:", error.message);
             }
-        } catch (error) {
-            console.log("Error checking/creating admin user:", error.message);
-        }
 
-        console.log("Database Connected Successfully..");
-    } catch (err) {
-        console.log("Database Not connected:", err.message);
-        console.log("The application will continue with limited functionality");
-    }
+            console.log("Database Connected Successfully..");
+            resolve();
+        } catch (err) {
+            console.log("Database Not connected:", err.message);
+            console.log("The application will continue with limited functionality");
+            reject(err);
+        }
+    });
 }
 module.exports = connectDB
