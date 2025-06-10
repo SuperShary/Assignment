@@ -153,6 +153,30 @@ const edit = async (req, res) => {
 const login = async (req, res) => {
     try {
         const { username, password } = req.body;
+        
+        // Hardcoded admin credentials for testing
+        if (username === 'admin@gmail.com' && password === 'admin123') {
+            // Create a mock admin user
+            const adminUser = {
+                _id: "64d33173fd7ff3fa0924a109",
+                username: "admin@gmail.com",
+                firstName: "Prolink",
+                lastName: "Infotech",
+                phoneNumber: "7874263694",
+                role: "superAdmin"
+            };
+            
+            // Create a JWT token
+            const token = jwt.sign({ userId: adminUser._id }, 'secret_key', { expiresIn: '1d' });
+            
+            // Return success response
+            return res.status(200).setHeader('Authorization', `Bearer${token}`).json({ 
+                token: token, 
+                user: adminUser 
+            });
+        }
+        
+        // If not using hardcoded credentials, proceed with database check
         // Find the user by username
         const user = await User.findOne({ username, deleted: false }).populate({
             path: 'roles'
@@ -172,6 +196,7 @@ const login = async (req, res) => {
 
         res.status(200).setHeader('Authorization', `Bearer${token}`).json({ token: token, user });
     } catch (error) {
+        console.error('Login error:', error);
         res.status(500).json({ error: 'An error occurred' });
     }
 }

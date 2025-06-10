@@ -48,7 +48,7 @@ const Preview = (props) => {
                                         <div>
                                             <Image
                                                 style={{ width: "100%", height: '52px' }}
-                                                src={largeLogo[0]?.logoLgImg}
+                                                src={largeLogo && largeLogo.length > 0 ? largeLogo[0]?.logoLgImg : ''}
                                                 alt="Logo"
                                                 cursor="pointer"
                                                 userSelect="none"
